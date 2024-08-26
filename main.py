@@ -1,66 +1,73 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from typing import List
-import uvicorn
-import logging
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
+from typing import Dict, List
+from pydantic import BaseModel
 
 app = FastAPI()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Dictionary to store room information and clients
+rooms: Dict[str, List[Dict[str, str]]] = {}
 
-# Store room information and clients
-rooms = {}
+class JoinRoom(BaseModel):
+    roomCode: str
+    username: str
 
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
+class LeaveRoom(BaseModel):
+    roomCode: str
+    username: str
 
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
+class Transcription(BaseModel):
+    roomCode: str
+    username: str
+    transcription: str
 
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+@app.websocket("/ws/{room_code}")
+async def websocket_endpoint(websocket: WebSocket, room_code: str):
+    await websocket.accept()
+    username = None
 
-    async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
-
-    async def broadcast(self, message: str, room_code: str):
-        for client in rooms.get(room_code, []):
-            await client.send_text(message)
-
-manager = ConnectionManager()
-
-@app.websocket("/ws/{room_code}/{username}")
-async def websocket_endpoint(websocket: WebSocket, room_code: str, username: str):
-    await manager.connect(websocket)
-    
-    # Log when a user joins
-    logger.info(f"User {username} connected to room {room_code}")
-
+    # Check if the room exists or create a new one
     if room_code not in rooms:
         rooms[room_code] = []
 
-    rooms[room_code].append(websocket)
-    await manager.broadcast(f"{username} joined the room", room_code)
-
     try:
+        # Receive and handle messages
         while True:
             data = await websocket.receive_text()
-            await manager.broadcast(f"{username}: {data}", room_code)
-            # Log when a user sends a message
-            logger.info(f"Message from {username} in room {room_code}: {data}")
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
-        rooms[room_code].remove(websocket)
-        await manager.broadcast(f"{username} left the room", room_code)
-        
-        # Log when a user disconnects
-        logger.info(f"User {username} disconnected from room {room_code}")
+            message = json.loads(data)
 
-        if not rooms[room_code]:
-            del rooms[room_code]
+            if 'join' in message:
+                username = message['join']['username']
+                if not any(client['username'] == username for client in rooms[room_code]):
+                    rooms[room_code].append({"socket": websocket, "username": username})
+                    await websocket.send_text(json.dumps({'event': 'userJoined', 'username': username}))
+                    for client in rooms[room_code]:
+                        if client["username"] != username:
+                            await client["socket"].send_text(json.dumps({'event': 'userJoined', 'username': username}))
+            
+            elif 'leave' in message:
+                username = message['leave']['username']
+                rooms[room_code] = [client for client in rooms[room_code] if client['username'] != username]
+                await websocket.send_text(json.dumps({'event': 'userLeft', 'username': username}))
+                for client in rooms[room_code]:
+                    await client["socket"].send_text(json.dumps({'event': 'userLeft', 'username': username}))
+                if not rooms[room_code]:
+                    del rooms[room_code]
+
+            elif 'transcription' in message:
+                username = message['transcription']['username']
+                transcription = message['transcription']['transcription']
+                for client in rooms[room_code]:
+                    await client["socket"].send_text(json.dumps({'event': 'transcription', 'username': username, 'transcription': transcription}))
+    
+    except WebSocketDisconnect:
+        # Handle disconnection
+        if username:
+            rooms[room_code] = [client for client in rooms[room_code] if client['username'] != username]
+            for client in rooms[room_code]:
+                await client["socket"].send_text(json.dumps({'event': 'userLeft', 'username': username}))
+            if not rooms[room_code]:
+                del rooms[room_code]
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=3000)
