@@ -1,35 +1,21 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List
-from pydantic import BaseModel
 import json
+from starlette.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# Add CORS middleware
+# Add CORS middleware to allow connections from different origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins, you can restrict it as needed
+    allow_origins=["*"],  # Adjust to specific origins if needed
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods, you can restrict it as needed
-    allow_headers=["*"],  # Allows all headers, you can restrict it as needed
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Dictionary to store room information and clients
 rooms: Dict[str, List[Dict[str, str]]] = {}
-
-class JoinRoom(BaseModel):
-    roomCode: str
-    username: str
-
-class LeaveRoom(BaseModel):
-    roomCode: str
-    username: str
-
-class Transcription(BaseModel):
-    roomCode: str
-    username: str
-    transcription: str
 
 @app.websocket("/ws/{room_code}")
 async def websocket_endpoint(websocket: WebSocket, room_code: str):
@@ -44,7 +30,11 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str):
         # Receive and handle messages
         while True:
             data = await websocket.receive_text()
-            message = json.loads(data)
+            try:
+                message = json.loads(data)
+            except json.JSONDecodeError:
+                await websocket.send_text(json.dumps({'error': 'Invalid JSON format'}))
+                continue  # Skip processing invalid messages
 
             if 'join' in message:
                 username = message['join']['username']
@@ -81,4 +71,4 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)  # Use host="0.0.0.0" for deployment
+    uvicorn.run(app, host="0.0.0.0", port=8000)  # Adjust the host and port for deployment
