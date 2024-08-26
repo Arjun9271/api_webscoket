@@ -1,9 +1,19 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List
 from pydantic import BaseModel
 import json
 
 app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins, you can restrict it as needed
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods, you can restrict it as needed
+    allow_headers=["*"],  # Allows all headers, you can restrict it as needed
+)
 
 # Dictionary to store room information and clients
 rooms: Dict[str, List[Dict[str, str]]] = {}
@@ -71,4 +81,4 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)  # Use host="0.0.0.0" for deployment
