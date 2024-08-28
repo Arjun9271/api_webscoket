@@ -1,5 +1,4 @@
-#socket_server.py
-
+# router/socket_server.py
 import socketio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +16,7 @@ app.add_middleware(
 )
  
 # Create a new Socket.IO server
-sio = socketio.AsyncServer(async_mode='asgi')
+sio = socketio.AsyncServer(cors_allowed_origins='*',async_mode='asgi')
  
 # Wrap the Socket.IO server with the ASGI app
 socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
