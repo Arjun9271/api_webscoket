@@ -2,3 +2,4 @@ fastapi
 uvicorn
 python-socketio[asyncio]
 aiohttp
+azure-cognitiveservices-speech
