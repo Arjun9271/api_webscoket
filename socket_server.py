@@ -45,7 +45,6 @@ async def synthesize_speech(text, language="en-US"):
         return base64_audio
     else:
         print(f"Speech synthesis failed with reason: {result.reason}")
-        print(f"Error details: {result.error_details}")
         return None
  
 # Event handler when a new client connects
